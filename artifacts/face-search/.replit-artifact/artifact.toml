@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "Face Search"
+version = "1.0.0"
+id = "artifacts/face-search"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 3000
+
+[services.development]
+run = "pnpm --filter @workspace/face-search run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/face-search", "run", "build" ]
+publicDir = "artifacts/face-search/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "3000"
+BASE_PATH = "/"

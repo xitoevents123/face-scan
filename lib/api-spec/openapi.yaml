@@ -1,0 +1,255 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: Face recognition search API
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: images
+    description: Library image management
+  - name: search
+    description: Face search operations
+  - name: stats
+    description: Library statistics
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+
+  /images:
+    get:
+      operationId: listImages
+      tags: [images]
+      summary: List all library images
+      description: Returns all images in the library with their metadata
+      responses:
+        "200":
+          description: List of images
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/LibraryImage"
+
+  /images/{id}:
+    get:
+      operationId: getImage
+      tags: [images]
+      summary: Get a single image
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Image details
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryImage"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteImage
+      tags: [images]
+      summary: Delete an image from the library
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /images/upload:
+    post:
+      operationId: uploadImage
+      tags: [images]
+      summary: Upload an image to the library
+      description: Uploads an image, detects faces, and stores embeddings
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/ImageUploadInput"
+      responses:
+        "201":
+          description: Image uploaded and processed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryImage"
+        "400":
+          description: No face detected or bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /search:
+    post:
+      operationId: searchByFace
+      tags: [search]
+      summary: Search for matching faces
+      description: Upload a query image and find matching faces in the library
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              $ref: "#/components/schemas/SearchInput"
+      responses:
+        "200":
+          description: Search results sorted by similarity
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SearchResult"
+        "400":
+          description: No face detected in query image
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /stats:
+    get:
+      operationId: getStats
+      tags: [stats]
+      summary: Get library statistics
+      description: Returns counts and summary info about the library
+      responses:
+        "200":
+          description: Library stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/LibraryStats"
+
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+
+    LibraryImage:
+      type: object
+      required: [id, filename, originalName, faceCount, uploadedAt, url]
+      properties:
+        id:
+          type: integer
+        filename:
+          type: string
+        originalName:
+          type: string
+        faceCount:
+          type: integer
+        uploadedAt:
+          type: string
+        url:
+          type: string
+
+    ImageUploadInput:
+      type: object
+      required: [file]
+      properties:
+        file:
+          type: string
+          description: Image file (sent as multipart/form-data)
+
+    SearchInput:
+      type: object
+      required: [file]
+      properties:
+        file:
+          type: string
+          description: Query image file (sent as multipart/form-data)
+        threshold:
+          type: number
+          description: Cosine similarity threshold (0.0-1.0, default 0.40)
+
+    SearchMatch:
+      type: object
+      required: [imageId, filename, url, originalName, score, faceCount, uploadedAt]
+      properties:
+        imageId:
+          type: integer
+        filename:
+          type: string
+        originalName:
+          type: string
+        url:
+          type: string
+        score:
+          type: number
+          description: Cosine similarity score (0-1)
+        faceCount:
+          type: integer
+        uploadedAt:
+          type: string
+
+    SearchResult:
+      type: object
+      required: [matches, queryFacesFound, totalSearched]
+      properties:
+        matches:
+          type: array
+          items:
+            $ref: "#/components/schemas/SearchMatch"
+        queryFacesFound:
+          type: integer
+        totalSearched:
+          type: integer
+
+    LibraryStats:
+      type: object
+      required: [totalImages, totalFaces, embeddingsStored]
+      properties:
+        totalImages:
+          type: integer
+        totalFaces:
+          type: integer
+        embeddingsStored:
+          type: integer
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string

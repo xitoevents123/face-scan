@@ -1,0 +1,110 @@
+modules = ["nodejs-24", "python-3.11", "python3"]
+
+[deployment]
+router = "application"
+deploymentTarget = "autoscale"
+
+[deployment.postBuild]
+args = ["pnpm", "store", "prune"]
+env = { "CI" = "true" }
+
+[workflows]
+runButton = "Project"
+
+[[workflows.workflow]]
+name = "Project"
+mode = "parallel"
+author = "agent"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Face Service"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "Face Search Frontend"
+
+[[workflows.workflow.tasks]]
+task = "workflow.run"
+args = "API Server"
+
+[[workflows.workflow]]
+name = "Face Service"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "python3 artifacts/face-service/main.py"
+waitForPort = 5001
+
+[[workflows.workflow]]
+name = "Face Search Frontend"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "webview"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "PORT=3000 BASE_PATH=/ pnpm --filter @workspace/face-search run dev"
+waitForPort = 3000
+
+[[workflows.workflow]]
+name = "API Server"
+author = "agent"
+
+[workflows.workflow.metadata]
+outputType = "console"
+
+[[workflows.workflow.tasks]]
+task = "shell.exec"
+args = "set -a && . .env && set +a && PORT=8080 FACE_SERVICE_PORT=5001 node --enable-source-maps artifacts/api-server/dist/index.mjs"
+
+[agent]
+stack = "PNPM_WORKSPACE"
+expertMode = true
+
+[postMerge]
+path = "scripts/post-merge.sh"
+timeoutMs = 20000
+
+[[ports]]
+localPort = 3000
+externalPort = 80
+
+[[ports]]
+localPort = 5000
+
+[[ports]]
+localPort = 5001
+externalPort = 3000
+
+[[ports]]
+localPort = 8080
+
+[[ports]]
+localPort = 8081
+externalPort = 8081
+
+[[ports]]
+localPort = 21722
+externalPort = 3001
+
+[nix]
+channel = "stable-25_05"
+packages = ["oneDNN", "re2"]
+
+[userenv]
+
+[userenv.shared]
+SUPABASE_URL = "https://opzqagvdckvvykqnbqfx.supabase.co"
+SUPABASE_SERVICE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im9wenFhZ3ZkY2t2dnlrcW5icWZ4Iiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc3NzYxMTcyNiwiZXhwIjoyMDkzMTg3NzI2fQ.M6psHb9AJ8zkqJuEXsxqQnh_w2jC-H-sV6GYXM-oHjQ"
+R2_ACCESS_KEY_ID = "5d4603a87051532fb1831c8019802ade"
+R2_SECRET_ACCESS_KEY = "344c88ed667ffc4491a3420c126096cca0741f164a9738feb7a0b5bc04af75cc"
+R2_ACCOUNT_ID = "75785beaee42c7b41f3a5cec3bae1857"
+R2_BUCKET_NAME = "xito-photography-xitoevents-com"
+R2_PUBLIC_URL = "https://pub-a5615427d38e421491703dab2fffcffb.r2.dev"
+PCLOUD_USERNAME = "weddingtalesfinance@gmail.com"
