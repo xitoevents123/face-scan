@@ -1,7 +1,7 @@
 import { Router, type IRouter } from "express";
 import multer from "multer";
 import { extractEmbeddings } from "../lib/faceService";
-import { supabase, cosineSimilarity, type FaceEmbeddingRow } from "../lib/supabase";
+import { qdrant, COLLECTION_NAME, ensureCollection } from "../lib/qdrant";
 import { publicUrl } from "../lib/r2";
 import { logger } from "../lib/logger";
 
@@ -14,27 +14,29 @@ const upload = multer({
   },
 });
 
-const BATCH_SIZE = 5000;
+interface VectorMatch {
+  id: string | number;
+  image_id: string;
+  score: number;
+}
 
-async function fetchAllEmbeddings(): Promise<FaceEmbeddingRow[]> {
-  const all: FaceEmbeddingRow[] = [];
-  let from = 0;
-
-  while (true) {
-    const { data, error } = await supabase
-      .from("face_embeddings")
-      .select("id, image_id, embedding")
-      .range(from, from + BATCH_SIZE - 1);
-
-    if (error) throw new Error(error.message);
-    if (!data || data.length === 0) break;
-
-    all.push(...(data as FaceEmbeddingRow[]));
-    if (data.length < BATCH_SIZE) break;
-    from += BATCH_SIZE;
-  }
-
-  return all;
+async function searchByVector(
+  queryEmbedding: number[],
+  threshold: number,
+  matchCount: number
+): Promise<VectorMatch[]> {
+  await ensureCollection();
+  const results = await qdrant.search(COLLECTION_NAME, {
+    vector: queryEmbedding,
+    limit: matchCount,
+    score_threshold: threshold,
+    with_payload: true,
+  });
+  return results.map((r) => ({
+    id: r.id,
+    image_id: (r.payload as { image_id?: string })?.image_id ?? "",
+    score: r.score,
+  }));
 }
 
 const router: IRouter = Router();
@@ -58,52 +60,44 @@ router.post("/search", upload.single("file"), async (req, res): Promise<void> =>
 
   const queryEmbedding = embedResult.embeddings[0];
 
-  let allRows: FaceEmbeddingRow[];
+  let rawMatches: VectorMatch[];
   try {
-    allRows = await fetchAllEmbeddings();
+    rawMatches = await searchByVector(queryEmbedding, effectiveThreshold, 10000);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    logger.error({ err }, "Supabase select failed");
-    res.status(500).json({ error: "Failed to load embeddings: " + msg });
+    logger.error({ err }, "Qdrant search failed");
+    res.status(500).json({ error: "Search failed: " + msg });
     return;
   }
 
-  const scored = allRows
-    .map((row) => ({
-      embedding_id: row.id,
-      image_key: row.image_id,
-      score: cosineSimilarity(queryEmbedding, row.embedding),
-    }))
-    .filter((r) => r.score >= effectiveThreshold);
-
-  const bestByImage = new Map<string, typeof scored[0]>();
-  for (const match of scored) {
-    const existing = bestByImage.get(match.image_key);
+  const bestByImage = new Map<string, VectorMatch>();
+  for (const match of rawMatches) {
+    const existing = bestByImage.get(match.image_id);
     if (!existing || match.score > existing.score) {
-      bestByImage.set(match.image_key, match);
+      bestByImage.set(match.image_id, match);
     }
   }
 
   const matches = Array.from(bestByImage.values())
     .sort((a, b) => b.score - a.score)
-    .slice(0, 100)
+    .slice(0, 1000)
     .map((m) => {
-      const filename = m.image_key.split("/").pop() ?? m.image_key;
+      const filename = m.image_id.split("/").pop() ?? m.image_id;
       return {
-        image_key: m.image_key,
-        url: `${publicUrl}/${m.image_key}`,
+        image_key: m.image_id,
+        url: `${publicUrl}/${m.image_id}`,
         filename,
         score: Math.round(m.score * 1000) / 1000,
-        embedding_id: m.embedding_id,
+        embedding_id: m.id,
       };
     });
 
-  logger.info({ queryFaces: embedResult.face_count, totalSearched: allRows.length, matched: matches.length }, "Search completed");
+  logger.info({ queryFaces: embedResult.face_count, candidates: rawMatches.length, matched: matches.length }, "Search completed");
 
   res.json({
     matches,
     query_faces_found: embedResult.face_count,
-    total_searched: allRows.length,
+    total_searched: rawMatches.length,
   });
 });
 

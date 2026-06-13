@@ -2,7 +2,9 @@ import { Router, type IRouter } from "express";
 import multer from "multer";
 import { extractEmbeddings } from "../lib/faceService";
 import { supabase } from "../lib/supabase";
+import { qdrant, COLLECTION_NAME, ensureCollection } from "../lib/qdrant";
 import { logger } from "../lib/logger";
+import { v4 as uuidv4 } from "uuid";
 
 const upload = multer({
   storage: multer.memoryStorage(),
@@ -80,20 +82,23 @@ router.post("/ingest", upload.single("file"), async (req, res): Promise<void> =>
     return;
   }
 
-  const rows = embedResult.embeddings.map((embedding) => ({
-    image_id: pcloudFileId,
-    user_id: userId,
-    embedding,
+  await ensureCollection();
+
+  const points = embedResult.embeddings.map((embedding) => ({
+    id: uuidv4(),
+    vector: embedding,
+    payload: {
+      image_id: pcloudFileId,
+      user_id: userId,
+    },
   }));
 
-  const { data, error } = await supabase
-    .from("face_embeddings")
-    .insert(rows)
-    .select("id");
-
-  if (error) {
-    logger.error({ error }, "Supabase insert failed");
-    res.status(500).json({ error: "Failed to save embeddings: " + error.message });
+  try {
+    await qdrant.upsert(COLLECTION_NAME, { points });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    logger.error({ err }, "Qdrant upsert failed");
+    res.status(500).json({ error: "Failed to save embeddings: " + msg });
     return;
   }
 
@@ -102,7 +107,7 @@ router.post("/ingest", upload.single("file"), async (req, res): Promise<void> =>
   res.status(201).json({
     success: true,
     faces_found: faceCount,
-    embedding_ids: (data ?? []).map((r: { id: string }) => r.id),
+    embedding_ids: points.map((p) => p.id),
   });
 });
 

@@ -37,7 +37,7 @@ outputType = "console"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "python3 artifacts/face-service/main.py"
+args = ".pythonlibs/bin/python3 artifacts/face-service/main.py"
 waitForPort = 5001
 
 [[workflows.workflow]]
@@ -108,3 +108,6 @@ R2_ACCOUNT_ID = "75785beaee42c7b41f3a5cec3bae1857"
 R2_BUCKET_NAME = "xito-photography-xitoevents-com"
 R2_PUBLIC_URL = "https://pub-a5615427d38e421491703dab2fffcffb.r2.dev"
 PCLOUD_USERNAME = "weddingtalesfinance@gmail.com"
+VITE_FACE_API_KEY = "178f4b50642dd26e19a6cf1d6cf1a0049aa0488c926aa065deacd6fa65c15b50"
+API_KEY = "178f4b50642dd26e19a6cf1d6cf1a0049aa0488c926aa065deacd6fa65c15b50"
+QDRANT_URL = "https://1c49f4f9-ed84-4209-a48e-663ac32c53a7.eu-west-2-0.aws.cloud.qdrant.io"

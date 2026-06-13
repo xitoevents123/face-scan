@@ -1,7 +1,8 @@
 services:
   # ─────────────────────────────────────────────────────────────
   # 1. Face Recognition Service  (Python / Flask / Gunicorn)
-  #    Deploy this FIRST so you have its URL for the API server.
+  #    Deploy this FIRST — copy its URL into face-search-api's
+  #    FACE_SERVICE_URL env var before deploying the API server.
   # ─────────────────────────────────────────────────────────────
   - type: web
     name: face-service
@@ -10,9 +11,9 @@ services:
     buildCommand: pip install -r requirements.txt
     startCommand: >
       gunicorn
-      --workers 2
+      --workers 1
       --worker-class gthread
-      --threads 2
+      --threads 4
       --bind 0.0.0.0:$PORT
       --timeout 300
       --preload
@@ -20,9 +21,7 @@ services:
     healthCheckPath: /health
     envVars:
       - key: PYTHON_VERSION
-        value: "3.11.0"
-    # Recommended plan: "standard" (512 MB RAM minimum for InsightFace model)
-    # Free plan may run out of memory — upgrade if you see OOM errors.
+        value: "3.11.9"
 
   # ─────────────────────────────────────────────────────────────
   # 2. API Server  (Node.js / Express)
@@ -36,14 +35,12 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
-      # Set this to the URL of your deployed face-service above, e.g.:
-      # https://face-service.onrender.com
+      # URL of the deployed face-service above, e.g. https://face-service.onrender.com
       - key: FACE_SERVICE_URL
         sync: false
-      # Comma-separated list of allowed frontend origins, e.g.:
-      # https://face-search-frontend.onrender.com,https://yourdomain.com
-      # Leave blank to allow all origins.
-      - key: ALLOWED_ORIGINS
+      - key: QDRANT_URL
+        sync: false
+      - key: QDRANT_API_KEY
         sync: false
       - key: SUPABASE_URL
         sync: false
@@ -69,11 +66,11 @@ services:
     buildCommand: >
       npm install -g pnpm &&
       pnpm install &&
+      PORT=3000 BASE_PATH=/ NODE_ENV=production
       pnpm --filter @workspace/face-search run build
     staticPublishPath: artifacts/face-search/dist/public
     envVars:
-      # Set this to your deployed API server URL, e.g.:
-      # https://face-search-api.onrender.com
+      # URL of the deployed API server, e.g. https://face-search-api.onrender.com
       - key: VITE_API_BASE
         sync: false
     headers:

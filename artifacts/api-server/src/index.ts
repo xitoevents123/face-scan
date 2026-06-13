@@ -24,6 +24,6 @@ app.listen(port, (err) => {
 
   logger.info({ port }, "Server listening");
 
-  // Start background auto-indexer: indexes new R2 images automatically
-  startAutoIndexer();
+  // Auto-indexer disabled
+  // startAutoIndexer();
 });

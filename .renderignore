@@ -1,0 +1,33 @@
+# Dependencies — reinstalled fresh on Render
+node_modules/
+**/node_modules/
+
+# Git history
+.git/
+
+# Local dev / Replit-specific
+.replit
+.local/
+.cache/
+.config/
+replit.nix
+.upm/
+
+# Build outputs (rebuilt on Render)
+**/dist/
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+.agents/
+
+# Logs
+*.log
+logs/
+
+# Test files
+**/*.test.ts
+**/*.spec.ts
+**/__tests__/
+
+# Mockup sandbox (not needed in production)
+artifacts/mockup-sandbox/

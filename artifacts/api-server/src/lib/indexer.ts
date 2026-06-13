@@ -1,8 +1,10 @@
 import { listAllImages, r2, bucketName, publicUrl, type R2Image } from "./r2";
 import { supabase } from "./supabase";
+import { qdrant, COLLECTION_NAME, ensureCollection } from "./qdrant";
 import { extractEmbeddings } from "./faceService";
 import { logger } from "./logger";
 import { GetObjectCommand } from "@aws-sdk/client-s3";
+import { v4 as uuidv4 } from "uuid";
 
 export interface IndexState {
   running: boolean;
@@ -61,7 +63,29 @@ function getExtMime(key: string): string {
   return map[ext] ?? "image/jpeg";
 }
 
+async function getIndexedImageIds(): Promise<Set<string>> {
+  const indexed = new Set<string>();
+  let offset: string | number | null = undefined;
+  while (true) {
+    const result = await qdrant.scroll(COLLECTION_NAME, {
+      limit: 1000,
+      offset: offset as string | undefined,
+      with_payload: true,
+      with_vector: false,
+    });
+    for (const point of result.points) {
+      const payload = point.payload as { image_id?: string };
+      if (payload?.image_id) indexed.add(payload.image_id);
+    }
+    if (result.next_page_offset == null) break;
+    offset = result.next_page_offset as string | number;
+  }
+  return indexed;
+}
+
 export async function runIndexing(images: R2Image[]) {
+  await ensureCollection();
+
   state.running = true;
   state.total = images.length;
   state.processed = 0;
@@ -80,10 +104,7 @@ export async function runIndexing(images: R2Image[]) {
     .eq("face_count", 0);
   const noFaceKeys = new Set((noFaceImages ?? []).map((r: { pcloud_file_id: string }) => r.pcloud_file_id));
 
-  const { data: embeddedImages } = await supabase
-    .from("face_embeddings")
-    .select("image_id");
-  const embeddedKeys = new Set((embeddedImages ?? []).map((r: { image_id: string }) => r.image_id));
+  const embeddedKeys = await getIndexedImageIds();
 
   const CONCURRENCY = 3;
 
@@ -119,11 +140,12 @@ export async function runIndexing(images: R2Image[]) {
         );
 
         if (faceCount > 0) {
-          const rows = embedResult.embeddings.map((embedding) => ({
-            image_id: img.key,
-            embedding,
+          const points = embedResult.embeddings.map((embedding) => ({
+            id: uuidv4(),
+            vector: embedding,
+            payload: { image_id: img.key },
           }));
-          await supabase.from("face_embeddings").insert(rows);
+          await qdrant.upsert(COLLECTION_NAME, { points });
           state.facesFound += faceCount;
           embeddedKeys.add(img.key);
         } else {
@@ -154,6 +176,7 @@ export async function runIndexing(images: R2Image[]) {
 export async function indexNewImages(folder?: string): Promise<number> {
   if (state.running) return 0;
 
+  await ensureCollection();
   const allImages = await listAllImages(folder ? `${folder}/` : undefined);
 
   const { data: noFaceImages } = await supabase
@@ -162,10 +185,7 @@ export async function indexNewImages(folder?: string): Promise<number> {
     .eq("face_count", 0);
   const noFaceKeys = new Set((noFaceImages ?? []).map((r: { pcloud_file_id: string }) => r.pcloud_file_id));
 
-  const { data: embeddedImages } = await supabase
-    .from("face_embeddings")
-    .select("image_id");
-  const embeddedKeys = new Set((embeddedImages ?? []).map((r: { image_id: string }) => r.image_id));
+  const embeddedKeys = await getIndexedImageIds();
 
   const newImages = allImages.filter(
     (img) => !noFaceKeys.has(img.key) && !embeddedKeys.has(img.key)
